@@ -3,20 +3,6 @@ import pandas as pd
 
 st.set_page_config(page_title="Hospital System", layout="wide")
 
-# ---------------- STYLING ----------------
-st.markdown("""
-<style>
-.card {
-    padding: 20px;
-    border-radius: 12px;
-    background-color: white;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-    margin-bottom: 20px;
-    color: black;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # ---------------- USERS ----------------
 if "users" not in st.session_state:
     st.session_state.users = {
@@ -25,47 +11,85 @@ if "users" not in st.session_state:
 
 # ---------------- DATA ----------------
 if "patients" not in st.session_state:
-    st.session_state.patients = pd.DataFrame(columns=["ID", "Name", "Age", "Gender"])
+    st.session_state.patients = pd.DataFrame(columns=["ID", "Name", "Age", "Gender", "Username"])
 
 if "appointments" not in st.session_state:
     st.session_state.appointments = pd.DataFrame(
-        columns=["Patient ID", "Patient Name", "Doctor", "Date"]
+        columns=["Patient Username", "Patient Name", "Doctor", "Date"]
     )
 
-# ---------------- LOGIN ----------------
+# ---------------- SESSION ----------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
     st.session_state.username = None
 
-def login():
-    st.title("🔐 Hospital Login")
+# ---------------- LOGIN / SIGNUP ----------------
+def auth_page():
+    st.title("🔐 Hospital Login System")
 
-    role = st.selectbox("Login as", ["Admin", "Doctor"])
+    role = st.selectbox("Select Role", ["Admin", "Doctor", "Patient"])
+    action = st.radio("Action", ["Login", "Sign Up"])
+
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
-    if st.button("Login"):
-        if username in st.session_state.users:
-            user = st.session_state.users[username]
-            if user["password"] == password and user["role"] == role:
-                st.session_state.logged_in = True
-                st.session_state.role = role
-                st.session_state.username = username
-                st.success("Login successful!")
-                st.rerun()
+    # -------- LOGIN --------
+    if action == "Login":
+        if st.button("Login"):
+            if username in st.session_state.users:
+                user = st.session_state.users[username]
+                if user["password"] == password and user["role"] == role:
+                    st.session_state.logged_in = True
+                    st.session_state.role = role
+                    st.session_state.username = username
+                    st.success("Login successful!")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials!")
             else:
-                st.error("Invalid credentials!")
-        else:
-            st.error("User not found!")
+                st.error("User not found!")
 
+    # -------- SIGNUP (PATIENT ONLY) --------
+    elif action == "Sign Up":
+        if role != "Patient":
+            st.warning("Only patients can sign up!")
+        else:
+            name = st.text_input("Full Name")
+            age = st.number_input("Age", min_value=0)
+            gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+
+            if st.button("Create Account"):
+                if username in st.session_state.users:
+                    st.error("Username already exists!")
+                else:
+                    # Add to users
+                    st.session_state.users[username] = {
+                        "password": password,
+                        "role": "Patient"
+                    }
+
+                    # Add to patients table
+                    new_id = len(st.session_state.patients) + 1
+                    new_patient = pd.DataFrame([[
+                        new_id, name, age, gender, username
+                    ]], columns=["ID", "Name", "Age", "Gender", "Username"])
+
+                    st.session_state.patients = pd.concat(
+                        [st.session_state.patients, new_patient],
+                        ignore_index=True
+                    )
+
+                    st.success("Account created! Please login.")
+
+# ---------------- CHECK LOGIN ----------------
 if not st.session_state.logged_in:
-    login()
+    auth_page()
     st.stop()
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("🏥 Hospital System")
-st.sidebar.write(f"👤 {st.session_state.role}")
+st.sidebar.write(f"👤 {st.session_state.role} ({st.session_state.username})")
 
 if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
@@ -74,12 +98,14 @@ if st.sidebar.button("Logout"):
 # ---------------- ROLE MENU ----------------
 if st.session_state.role == "Admin":
     menu = st.sidebar.radio("Menu", [
-        "Dashboard", "Add Patient", "Patients",
-        "Appointments", "Add Doctor"
+        "Dashboard", "Patients", "Appointments", "Add Doctor"
     ])
 
 elif st.session_state.role == "Doctor":
     menu = st.sidebar.radio("Menu", ["Appointments"])
+
+elif st.session_state.role == "Patient":
+    menu = st.sidebar.radio("Menu", ["Book Appointment", "My Appointments"])
 
 # ---------------- DASHBOARD ----------------
 if menu == "Dashboard":
@@ -87,85 +113,84 @@ if menu == "Dashboard":
 
     col1, col2 = st.columns(2)
 
-    col1.markdown(f"""
-    <div class="card">
-        <h3>Total Patients</h3>
-        <h1>{len(st.session_state.patients)}</h1>
-    </div>
-    """, unsafe_allow_html=True)
+    col1.metric("Total Patients", len(st.session_state.patients))
+    col2.metric("Total Appointments", len(st.session_state.appointments))
 
-    col2.markdown(f"""
-    <div class="card">
-        <h3>Total Appointments</h3>
-        <h1>{len(st.session_state.appointments)}</h1>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ---------------- ADD PATIENT ----------------
-elif menu == "Add Patient":
-    st.title("➕ Add Patient")
-
-    name = st.text_input("Name")
-    age = st.number_input("Age", min_value=0)
-    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
-
-    if st.button("Add"):
-        new_id = len(st.session_state.patients) + 1
-        new_patient = pd.DataFrame([[new_id, name, age, gender]],
-                                  columns=["ID", "Name", "Age", "Gender"])
-        st.session_state.patients = pd.concat(
-            [st.session_state.patients, new_patient], ignore_index=True)
-        st.success("Patient added!")
-
-# ---------------- VIEW & DELETE PATIENT ----------------
+# ---------------- PATIENTS (ADMIN) ----------------
 elif menu == "Patients":
     st.title("👨‍⚕️ Patients")
 
+    st.dataframe(st.session_state.patients)
+
     if not st.session_state.patients.empty:
-        st.dataframe(st.session_state.patients)
-
-        patient_ids = st.session_state.patients["ID"].tolist()
-        delete_id = st.selectbox("Select Patient ID to Delete", patient_ids)
-
+        delete_id = st.selectbox("Delete Patient ID", st.session_state.patients["ID"])
         if st.button("Delete Patient"):
             st.session_state.patients = st.session_state.patients[
                 st.session_state.patients["ID"] != delete_id
             ]
-            st.success("Patient deleted!")
-    else:
-        st.warning("No patients available")
+            st.success("Deleted!")
 
 # ---------------- APPOINTMENTS ----------------
 elif menu == "Appointments":
     st.title("📋 Appointments")
 
-    if not st.session_state.appointments.empty:
-        st.dataframe(st.session_state.appointments)
+    st.dataframe(st.session_state.appointments)
 
-        # Admin delete option
-        if st.session_state.role == "Admin":
-            index = st.selectbox("Select Appointment Index to Delete",
-                                 st.session_state.appointments.index)
-
-            if st.button("Delete Appointment"):
-                st.session_state.appointments = st.session_state.appointments.drop(index)
-                st.success("Appointment deleted!")
-    else:
-        st.warning("No appointments")
+    if st.session_state.role == "Admin" and not st.session_state.appointments.empty:
+        index = st.selectbox("Delete Appointment", st.session_state.appointments.index)
+        if st.button("Delete Appointment"):
+            st.session_state.appointments = st.session_state.appointments.drop(index)
+            st.success("Deleted!")
 
 # ---------------- ADD DOCTOR ----------------
 elif menu == "Add Doctor":
     st.title("➕ Add Doctor")
 
     username = st.text_input("Doctor Username")
-    password = st.text_input("Doctor Password", type="password")
+    password = st.text_input("Password", type="password")
 
     if st.button("Add Doctor"):
         if username in st.session_state.users:
-            st.error("Username already exists!")
+            st.error("Username exists!")
         else:
             st.session_state.users[username] = {
                 "password": password,
                 "role": "Doctor"
             }
-            st.success("Doctor added successfully!")
+            st.success("Doctor added!")
+
+# ---------------- BOOK APPOINTMENT (PATIENT) ----------------
+elif menu == "Book Appointment":
+    st.title("📅 Book Appointment")
+
+    doctor = st.text_input("Doctor Name")
+    date = st.date_input("Date")
+
+    if st.button("Book"):
+        patient_row = st.session_state.patients[
+            st.session_state.patients["Username"] == st.session_state.username
+        ].iloc[0]
+
+        new_appointment = pd.DataFrame([[
+            st.session_state.username,
+            patient_row["Name"],
+            doctor,
+            date
+        ]], columns=["Patient Username", "Patient Name", "Doctor", "Date"])
+
+        st.session_state.appointments = pd.concat(
+            [st.session_state.appointments, new_appointment],
+            ignore_index=True
+        )
+
+        st.success("Appointment booked!")
+
+# ---------------- MY APPOINTMENTS ----------------
+elif menu == "My Appointments":
+    st.title("📋 My Appointments")
+
+    user_apps = st.session_state.appointments[
+        st.session_state.appointments["Patient Username"] == st.session_state.username
+    ]
+
+    st.dataframe(user_apps)
